@@ -1,7 +1,7 @@
+import datetime
 import json
 import sys
 import time
-import datetime
 from datetime import timedelta
 from pathlib import Path
 
@@ -19,6 +19,7 @@ from labmachine.jupyter import (DNS_PROVIDERS, VM_PROVIDERS, JupyterController,
                                 push_state)
 from labmachine.types import DNSZone
 from labmachine.utils import get_class, read_toml, write_toml
+
 
 console = Console()
 progress = Progress(
@@ -43,9 +44,9 @@ def check_readiness(url: str, timeout: int = 10 * 60):
     _url = url if url.startswith("https://") else f"https://{url}"
     while code != 200 and datetime.datetime.now() < end_time:
         try:
-            res = requests.get(_url)
+            res = requests.get(_url, timeout=20)
             code = res.status_code
-        except Exception:
+        except requests.exceptions.RequestException:
             code = -1
         if code != 200:
             time.sleep(10)
@@ -254,7 +255,12 @@ def jupyter_up(volume, container, boot_image, instance_type, network, tags,
                 debug=debug,
             )
             jup.push()
-            if wait:
+        if wait:
+            console.print("=> Lab Machine created")
+            console.print("=> Now we need to wait until the service is avaialable")
+        
+            with progress:
+                task = progress.add_task("Checking readiness of JupyterLab service")
                 code = check_readiness(rsp.url, wait_timeout)
 
     if code == 200:
@@ -263,7 +269,8 @@ def jupyter_up(volume, container, boot_image, instance_type, network, tags,
         console.print(f"\t [magenta]https://{rsp.url}[/]")
         console.print(f"\t Token: [red]{rsp.token}[/]")
     else:
-        console.print(f"[orange] {rsp.url} still not available, code {code}[/]")
+        console.print(
+            f"[orange] {rsp.url} still not available, code {code}[/]")
 
 
 @cli.command(name="fetch")
